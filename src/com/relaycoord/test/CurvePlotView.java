@@ -12,15 +12,31 @@ import android.view.View;
 
 import java.util.Locale;
 
-/** Log-log plot of both relay curves, with current/time marker support. */
+/** Log-log plot of four trip stages (D1/D2/U1/U2), with current/time markers. */
 public class CurvePlotView extends View {
 
     public interface OnPick {
         void onPick(double amps);
     }
 
-    private static final int C_DOWN = 0xFF35C6E8;
-    private static final int C_UP = 0xFFFFB020;
+    /** One trip stage: curve + settings + how it is drawn. */
+    public static final class Stage {
+        final Curve curve;
+        final double pickup, tms, delay;
+        final int color;
+        final boolean dashed;
+
+        public Stage(Curve curve, double pickup, double tms, double delay,
+                     int color, boolean dashed) {
+            this.curve = curve;
+            this.pickup = pickup;
+            this.tms = tms;
+            this.delay = delay;
+            this.color = color;
+            this.dashed = dashed;
+        }
+    }
+
     private static final int C_GRID = 0xFF1B2A3A;
     private static final int C_GRID_MINOR = 0xFF152230;
     private static final int C_TEXT = 0xFF8098AE;
@@ -37,14 +53,13 @@ public class CurvePlotView extends View {
     private final Paint pFill = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pMark = new Paint(Paint.ANTI_ALIAS_FLAG);
     private final Paint pDot = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final DashPathEffect dashEffect;
 
     private final RectF plot = new RectF();
     private final float d;
     private boolean large = false;
 
-    private Curve dc, uc;
-    private double dp = 100, dt = 0.1, dd = 0;
-    private double up = 100, ut = 0.3, ud = 0.3;
+    private Stage[] stages = new Stage[0];
 
     private int markerMode = 0; // 0 none, 1 current, 2 time
     private double markerVal;
@@ -78,6 +93,7 @@ public class CurvePlotView extends View {
         pMark.setPathEffect(new DashPathEffect(new float[]{d * 3.5f, d * 3.5f}, 0));
 
         pDot.setStyle(Paint.Style.FILL);
+        dashEffect = new DashPathEffect(new float[]{d * 5f, d * 3f}, 0);
     }
 
     public void setOnPick(OnPick l) {
@@ -93,16 +109,9 @@ public class CurvePlotView extends View {
         invalidate();
     }
 
-    public void setRelays(Curve downCurve, double downPickup, double downTms, double downDelay,
-                          Curve upCurve, double upPickup, double upTms, double upDelay) {
-        dc = downCurve;
-        dp = downPickup;
-        dt = downTms;
-        dd = downDelay;
-        uc = upCurve;
-        up = upPickup;
-        ut = upTms;
-        ud = upDelay;
+    /** Stages are ordered D1, D2, U1, U2. */
+    public void setStages(Stage[] s) {
+        stages = s == null ? new Stage[0] : s;
         invalidate();
     }
 
@@ -140,17 +149,31 @@ public class CurvePlotView extends View {
         computeRange();
         c.drawRoundRect(plot, d * 4, d * 4, pFill);
         drawGrid(c);
-        if (dc != null) drawCurve(c, dc, dp, dt, dd, C_DOWN);
-        if (uc != null) drawCurve(c, uc, up, ut, ud, C_UP);
+        for (int k = 0; k < stages.length; k++) {
+            Stage s = stages[k];
+            if (s == null || s.curve == null || !(s.pickup > 0)) continue;
+            pCurve.setColor(s.color);
+            pCurve.setPathEffect(s.dashed ? dashEffect : null);
+            drawCurve(c, s, k);
+        }
+        pCurve.setPathEffect(null);
         drawMarker(c);
         drawAxes(c);
     }
 
     private void computeRange() {
-        double p1 = dp > 0 ? dp : 100;
-        double p2 = up > 0 ? up : 100;
-        double base = Math.min(p1, p2);
-        double hi = Math.max(p1, p2) * 400.0;
+        double lo = Double.POSITIVE_INFINITY, hiPickup = 0;
+        for (Stage s : stages) {
+            if (s == null || !(s.pickup > 0)) continue;
+            lo = Math.min(lo, s.pickup);
+            hiPickup = Math.max(hiPickup, s.pickup);
+        }
+        if (Double.isInfinite(lo)) {
+            lo = 100;
+            hiPickup = 100;
+        }
+        double base = lo;
+        double hi = hiPickup * 400.0;
         xMin = Math.pow(10, Math.floor(Math.log10(base * 0.4)));
         xMax = Math.pow(10, Math.ceil(Math.log10(hi)));
         if (xMax / xMin < 1000) xMax = xMin * 1000;
@@ -215,13 +238,33 @@ public class CurvePlotView extends View {
         }
     }
 
-    private void drawCurve(Canvas c, Curve curve, double pickup, double tms, double delay, int color) {
-        pCurve.setColor(color);
+    /** High definite-time stage takes over above its pickup. */
+    private boolean highDefinite(int lowIdx) {
+        int hi = lowIdx + 1;
+        if (hi >= stages.length) return false;
+        Stage h = stages[hi];
+        return h != null && h.curve != null && h.curve.isDefinite() && h.pickup > 0;
+    }
+
+    private double highPickup(int lowIdx) {
+        Stage h = stages[lowIdx + 1];
+        return h == null ? 0 : h.pickup;
+    }
+
+    /** Low set is not plotted beyond an active high definite-time pickup. */
+    private double lowLimit(int idx) {
+        return (idx == 0 || idx == 2) && highDefinite(idx) ? highPickup(idx)
+                : Double.POSITIVE_INFINITY;
+    }
+
+    private void drawCurve(Canvas c, Stage s, int idx) {
+        double limit = lowLimit(idx);
         Path path = new Path();
         boolean pen = false;
         for (float x = plot.left; x <= plot.right + 0.5f; x += d) {
             double amps = iOf(x);
-            double t = curve.tripTime(amps, pickup, tms, delay);
+            if (amps > limit) break;
+            double t = s.curve.tripTime(amps, s.pickup, s.tms, s.delay);
             if (Double.isNaN(t) || Double.isInfinite(t) || t < Y_MIN || t > Y_MAX) {
                 pen = false;
                 continue;
@@ -248,8 +291,7 @@ public class CurvePlotView extends View {
             float x = xOf(markerVal);
             if (x < plot.left || x > plot.right) return;
             c.drawLine(x, plot.top, x, plot.bottom, pMark);
-            dot(c, x, dc, dp, dt, dd, C_DOWN, true);
-            dot(c, x, uc, up, ut, ud, C_UP, true);
+            for (int k = 0; k < stages.length; k++) dot(c, x, k);
             pText.setColor(C_MARK);
             pText.setTextAlign(Paint.Align.LEFT);
             c.drawText(fmtA(markerVal), Math.min(x + d * 3, plot.right - d * 40),
@@ -258,50 +300,55 @@ public class CurvePlotView extends View {
             float y = yOf(markerVal);
             if (y < plot.top || y > plot.bottom) return;
             c.drawLine(plot.left, y, plot.right, y, pMark);
-            timeDot(c, y, dc, dp, dt, dd, C_DOWN, true);
-            timeDot(c, y, uc, up, ut, ud, C_UP, true);
+            for (int k = 0; k < stages.length; k++) timeDot(c, y, k);
             pText.setColor(C_MARK);
             pText.setTextAlign(Paint.Align.RIGHT);
             c.drawText(fmtT(markerVal), plot.right - d * 3, y - d * 4, pText);
         }
     }
 
-    private void dot(Canvas c, float x, Curve curve, double pickup, double tms, double delay,
-                     int color, boolean label) {
-        if (curve == null) return;
-        double t = curve.tripTime(markerVal, pickup, tms, delay);
+    /** Stagger labels so four stage dots stay readable on a small screen. */
+    private float labelY(int idx, float y) {
+        float off = (idx == 0 ? 11 : idx == 1 ? -5 : idx == 2 ? 22 : -16) * d;
+        return Math.max(plot.top + d * 8, Math.min(y + off, plot.bottom - d * 3));
+    }
+
+    private void dot(Canvas c, float x, int idx) {
+        Stage s = stages[idx];
+        if (s == null || s.curve == null || !(s.pickup > 0)) return;
+        if (markerVal > lowLimit(idx)) return;
+        double t = s.curve.tripTime(markerVal, s.pickup, s.tms, s.delay);
         if (Double.isNaN(t) || Double.isInfinite(t) || t < Y_MIN || t > Y_MAX) return;
         float y = yOf(t);
         if (y < plot.top || y > plot.bottom) return;
-        pDot.setColor(color);
-        c.drawCircle(x, y, d * 3.4f, pDot);
+        pDot.setColor(s.color);
+        c.drawCircle(x, y, d * 3f, pDot);
         pDot.setColor(0xFF0A1219);
-        c.drawCircle(x, y, d * 1.3f, pDot);
-        if (label) {
-            pLabel.setColor(color);
-            pLabel.setTextAlign(Paint.Align.LEFT);
-            float lx = Math.min(x + d * 5, plot.right - d * 34);
-            float ly = color == C_DOWN ? y + d * 11 : y - d * 5;
-            c.drawText(fmtT(t), lx, ly, pLabel);
-        }
+        c.drawCircle(x, y, d * 1.2f, pDot);
+        pLabel.setColor(s.color);
+        boolean left = idx == 1 || idx == 3;
+        pLabel.setTextAlign(left ? Paint.Align.RIGHT : Paint.Align.LEFT);
+        float lx = left ? Math.max(x - d * 4, plot.left + d * 36)
+                : Math.min(x + d * 4, plot.right - d * 36);
+        c.drawText(fmtT(t), lx, labelY(idx, y), pLabel);
     }
 
-    private void timeDot(Canvas c, float y, Curve curve, double pickup, double tms, double delay,
-                         int color, boolean label) {
-        if (curve == null) return;
-        double amps = curve.currentAtTime(markerVal, pickup, tms, delay);
+    private void timeDot(Canvas c, float y, int idx) {
+        Stage s = stages[idx];
+        if (s == null || s.curve == null || !(s.pickup > 0)) return;
+        double amps = s.curve.currentAtTime(markerVal, s.pickup, s.tms, s.delay);
         if (Double.isNaN(amps) || amps < xMin || amps > xMax) return;
+        if (amps > lowLimit(idx)) return;
         float x = xOf(amps);
-        pDot.setColor(color);
-        c.drawCircle(x, y, d * 3.4f, pDot);
+        pDot.setColor(s.color);
+        c.drawCircle(x, y, d * 3f, pDot);
         pDot.setColor(0xFF0A1219);
-        c.drawCircle(x, y, d * 1.3f, pDot);
-        if (label) {
-            pLabel.setColor(color);
-            pLabel.setTextAlign(Paint.Align.CENTER);
-            float ly = color == C_DOWN ? y + d * 12 : y - d * 5;
-            c.drawText(fmtA(amps), Math.max(plot.left + d * 20, Math.min(x, plot.right - d * 20)), ly, pLabel);
-        }
+        c.drawCircle(x, y, d * 1.2f, pDot);
+        pLabel.setColor(s.color);
+        pLabel.setTextAlign(Paint.Align.CENTER);
+        float ly = labelY(idx, y);
+        c.drawText(fmtA(amps), Math.max(plot.left + d * 20,
+                Math.min(x, plot.right - d * 20)), ly, pLabel);
     }
 
     private void drawAxes(Canvas c) {

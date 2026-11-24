@@ -111,8 +111,8 @@ public class MainActivity extends Activity {
                 resolve();
             }
         };
-        downPanel.onChange = onChange;
-        upPanel.onChange = onChange;
+        downPanel.setOnChange(onChange);
+        upPanel.setOnChange(onChange);
 
         load();
         showTab(0);
@@ -254,25 +254,23 @@ public class MainActivity extends Activity {
         return sv;
     }
 
-    private class RelayPanel {
+    private class StagePanel {
         final LinearLayout root;
         final Spinner spinner;
         final EditText pickupEt, tmsEt, delayEt;
         final TextView preview, formula;
-        final String key;
         final int color;
         Runnable onChange;
 
-        RelayPanel(String title, String sub, int color, String key) {
-            this.key = key;
+        StagePanel(String title, String sub, int color, String defTms, String defDelay,
+                   boolean high) {
             this.color = color;
 
             root = new LinearLayout(MainActivity.this);
             root.setOrientation(LinearLayout.VERTICAL);
-            root.setPadding(dp(10), dp(8), dp(10), dp(12));
 
             LinearLayout card = card();
-            card.setPadding(dp(12), dp(11), dp(12), dp(11));
+            card.setPadding(dp(10), dp(8), dp(10), dp(9));
 
             LinearLayout tr = new LinearLayout(MainActivity.this);
             tr.setOrientation(LinearLayout.HORIZONTAL);
@@ -289,14 +287,14 @@ public class MainActivity extends Activity {
             TextView t = new TextView(MainActivity.this);
             t.setText(title);
             t.setTextColor(TEXT);
-            t.setTextSize(13);
+            t.setTextSize(11);
             t.setTypeface(Typeface.DEFAULT_BOLD);
-            t.setLetterSpacing(0.06f);
+            t.setLetterSpacing(0.05f);
             tt.addView(t);
             TextView st = new TextView(MainActivity.this);
             st.setText(sub);
             st.setTextColor(MUTED);
-            st.setTextSize(9);
+            st.setTextSize(8);
             tt.addView(st);
             tr.addView(tt, new LinearLayout.LayoutParams(0,
                     ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
@@ -309,37 +307,30 @@ public class MainActivity extends Activity {
             spinner.setAdapter(ad);
             spinner.setBackgroundTintList(ColorStateList.valueOf(0xFF3E5A73));
             LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, dp(44));
-            slp.topMargin = dp(9);
+                    ViewGroup.LayoutParams.MATCH_PARENT, dp(38));
+            slp.topMargin = dp(6);
             card.addView(spinner, slp);
 
-            pickupEt = addRow(card, "Pickup current Is", "A", "100");
-            tmsEt = addRow(card, "Time multiplier TMS", "", "0.10");
-            delayEt = addRow(card, "Time delay", "s", "0.00");
+            pickupEt = addRow(card, "Pickup current Is", "A", high ? "500" : "100");
+            tmsEt = addRow(card, "Time multiplier TMS", "", defTms);
+            delayEt = addRow(card, "Time delay", "s", defDelay);
 
             formula = new TextView(MainActivity.this);
             formula.setTextColor(MUTED);
-            formula.setTextSize(8.5f);
+            formula.setTextSize(8);
             formula.setTypeface(Typeface.MONOSPACE);
-            formula.setPadding(0, dp(9), 0, 0);
+            formula.setPadding(0, dp(6), 0, 0);
             card.addView(formula);
 
             preview = new TextView(MainActivity.this);
-            preview.setTextColor(ACCENT);
-            preview.setTextSize(11);
+            preview.setTextColor(color);
+            preview.setTextSize(10);
             preview.setTypeface(Typeface.DEFAULT_BOLD);
-            preview.setPadding(0, dp(7), 0, 0);
+            preview.setPadding(0, dp(4), 0, 0);
             card.addView(preview);
 
             root.addView(card, new LinearLayout.LayoutParams(
                     ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
-
-            TextView note = new TextView(MainActivity.this);
-            note.setText("Trip time t = curve(TMS, I/Is) + delay.  Is = pickup threshold.");
-            note.setTextColor(0xFF607A91);
-            note.setTextSize(8.5f);
-            note.setPadding(dp(4), dp(9), dp(4), 0);
-            root.addView(note);
 
             spinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
                 @Override
@@ -384,7 +375,8 @@ public class MainActivity extends Activity {
         }
 
         Curve curve() {
-            return Curve.ALL[Math.max(0, spinner.getSelectedItemPosition())];
+            int i = Math.max(0, Math.min(Curve.ALL.length - 1, spinner.getSelectedItemPosition()));
+            return Curve.ALL[i];
         }
 
         double pickup() {
@@ -397,6 +389,77 @@ public class MainActivity extends Activity {
 
         double delay() {
             return num(delayEt);
+        }
+    }
+
+    /** One relay = two independent trip stages (low set + high set). */
+    private class RelayPanel {
+        final LinearLayout root;
+        final StagePanel low, high;
+
+        RelayPanel(String title, String sub, int color, String key) {
+            boolean down = key.equals("d");
+
+            root = new LinearLayout(MainActivity.this);
+            root.setOrientation(LinearLayout.VERTICAL);
+            root.setPadding(dp(10), dp(7), dp(10), dp(10));
+
+            LinearLayout tr = new LinearLayout(MainActivity.this);
+            tr.setOrientation(LinearLayout.HORIZONTAL);
+            tr.setGravity(Gravity.CENTER_VERTICAL);
+            View dot = new View(MainActivity.this);
+            dot.setBackground(circle(color));
+            LinearLayout.LayoutParams dlp = new LinearLayout.LayoutParams(dp(9), dp(9));
+            dlp.rightMargin = dp(8);
+            tr.addView(dot, dlp);
+            LinearLayout tt = new LinearLayout(MainActivity.this);
+            tt.setOrientation(LinearLayout.VERTICAL);
+            TextView t = new TextView(MainActivity.this);
+            t.setText(title);
+            t.setTextColor(TEXT);
+            t.setTextSize(13);
+            t.setTypeface(Typeface.DEFAULT_BOLD);
+            t.setLetterSpacing(0.06f);
+            tt.addView(t);
+            TextView st = new TextView(MainActivity.this);
+            st.setText(sub);
+            st.setTextColor(MUTED);
+            st.setTextSize(9);
+            tt.addView(st);
+            tr.addView(tt, new LinearLayout.LayoutParams(0,
+                    ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+            root.addView(tr);
+
+            low = new StagePanel("STAGE 1  \u00b7  LOW SET", "IDMT inverse \u2014 overload", color,
+                    down ? "0.10" : "0.30", "0.00", false);
+            LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            lp.topMargin = dp(6);
+            root.addView(low.root, lp);
+
+            high = new StagePanel("STAGE 2  \u00b7  HIGH SET", "definite time \u2014 short circuit", color,
+                    "1.00", down ? "0.10" : "0.40", true);
+            LinearLayout.LayoutParams hp = new LinearLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
+            hp.topMargin = dp(7);
+            root.addView(high.root, hp);
+
+            TextView note = new TextView(MainActivity.this);
+            note.setText("Each stage has its own curve. Inverse stages use TMS; delay adds to all stages.");
+            note.setTextColor(0xFF607A91);
+            note.setTextSize(8);
+            note.setPadding(dp(2), dp(8), dp(2), 0);
+            root.addView(note);
+        }
+
+        void setOnChange(Runnable r) {
+            low.onChange = r;
+            high.onChange = r;
+        }
+
+        void refresh() {
+            low.refresh();
+            high.refresh();
         }
     }
 
@@ -454,8 +517,10 @@ public class MainActivity extends Activity {
         LinearLayout legend = new LinearLayout(this);
         legend.setOrientation(LinearLayout.HORIZONTAL);
         legend.setGravity(Gravity.CENTER_VERTICAL);
-        legend.addView(legendItem("Downstream", ACCENT));
-        legend.addView(legendItem("Upstream", ORANGE));
+        legend.addView(legendItem("D1", ACCENT));
+        legend.addView(legendItem("D2", 0xFF7FE8F8));
+        legend.addView(legendItem("U1", ORANGE));
+        legend.addView(legendItem("U2", 0xFFFFD27A));
         expandBtn = new TextView(this);
         expandBtn.setText("FULL VIEW");
         expandBtn.setTextColor(ACCENT);
@@ -617,19 +682,19 @@ public class MainActivity extends Activity {
 
         View swatch = new View(this);
         swatch.setBackground(rounded(color, 2, 0));
-        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(dp(14), dp(3));
-        slp.rightMargin = dp(5);
+        LinearLayout.LayoutParams slp = new LinearLayout.LayoutParams(dp(11), dp(3));
+        slp.rightMargin = dp(4);
         item.addView(swatch, slp);
 
         TextView t = new TextView(this);
         t.setText(name);
         t.setTextColor(0xFFB7C8D8);
-        t.setTextSize(9);
+        t.setTextSize(8.5f);
         item.addView(t);
 
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.rightMargin = dp(12);
+        lp.rightMargin = dp(7);
         item.setLayoutParams(lp);
         return item;
     }
@@ -640,38 +705,47 @@ public class MainActivity extends Activity {
         if (plot == null || downPanel == null) return;
         syncPlot();
 
+        StagePanel[] st = {downPanel.low, downPanel.high, upPanel.low, upPanel.high};
+        String[] nm = {"D1", "D2", "U1", "U2"};
+
         if (fromCurrent) {
             double i = num(curEt);
             if (!(i > 0)) {
                 idle();
                 return;
             }
-            double td = downPanel.curve().tripTime(i, downPanel.pickup(),
-                    downPanel.tms(), downPanel.delay());
-            double tu = upPanel.curve().tripTime(i, upPanel.pickup(),
-                    upPanel.tms(), upPanel.delay());
+            double[] tv = new double[4];
+            StringBuilder sb = new StringBuilder("I = ").append(fmtA(i)).append('\n');
+            for (int k = 0; k < 4; k++) {
+                tv[k] = st[k].curve().tripTime(i, st[k].pickup(), st[k].tms(), st[k].delay());
+                sb.append(nm[k]).append(' ').append(fmtT(tv[k]));
+                sb.append(k == 1 ? "\n" : "    ");
+            }
 
             plot.setMarkerCurrent(i);
-            resultTv.setText("I = " + fmtA(i) + "\nDown " + fmtT(td) + "     Up " + fmtT(tu));
+            resultTv.setText(sb.toString());
 
-            boolean dInf = Double.isInfinite(td);
-            boolean uInf = Double.isInfinite(tu);
-            if (dInf && uInf) {
-                verdict("Current below both pickups", BAD);
-            } else if (dInf) {
-                verdict("Downstream below pickup \u2014 only upstream trips", BAD);
-            } else if (uInf) {
+            boolean dAny = finite(tv[0]) || finite(tv[1]);
+            boolean uAny = finite(tv[2]) || finite(tv[3]);
+            if (!dAny && !uAny) {
+                verdict("Current below all pickups", BAD);
+            } else if (!dAny) {
+                verdict("Below downstream pickups \u2014 only upstream trips", BAD);
+            } else if (!uAny) {
                 verdict("Only downstream trips", MUTED);
             } else {
-                double m = tu - td;
+                int di = finite(tv[0]) && (!finite(tv[1]) || tv[0] <= tv[1]) ? 0 : 1;
+                int ui = finite(tv[2]) && (!finite(tv[3]) || tv[2] <= tv[3]) ? 2 : 3;
+                double m = tv[ui] - tv[di];
+                String pair = nm[di] + "/" + nm[ui];
                 if (m >= 0.3) {
-                    verdict("Downstream first  \u00b7  margin " + fmtT(m), GOOD);
+                    verdict(pair + "  \u00b7  margin " + fmtT(m), GOOD);
                 } else if (m > 0.0005) {
-                    verdict("Downstream first  \u00b7  margin " + fmtT(m) + " (tight)", ORANGE);
+                    verdict(pair + "  \u00b7  margin " + fmtT(m) + " (tight)", ORANGE);
                 } else if (m >= -0.0005) {
-                    verdict("Both trip together \u2014 no margin", BAD);
+                    verdict(pair + "  \u00b7  no margin", BAD);
                 } else {
-                    verdict("Upstream first \u2014 miscoordinated", BAD);
+                    verdict(nm[ui] + " first \u2014 miscoordinated", BAD);
                 }
             }
         } else {
@@ -680,23 +754,32 @@ public class MainActivity extends Activity {
                 idle();
                 return;
             }
-            Curve cD = downPanel.curve(), cU = upPanel.curve();
-            double id = cD.currentAtTime(t, downPanel.pickup(), downPanel.tms(), downPanel.delay());
-            double iu = cU.currentAtTime(t, upPanel.pickup(), upPanel.tms(), upPanel.delay());
+            StringBuilder sb = new StringBuilder("t = ").append(fmtT(t)).append('\n');
+            StringBuilder vb = new StringBuilder("At this time: ");
+            for (int k = 0; k < 4; k++) {
+                Curve c = st[k].curve();
+                double pk = st[k].pickup();
+                double iv = c.currentAtTime(t, pk, st[k].tms(), st[k].delay());
+                String s = c.isDefinite()
+                        ? (t >= st[k].delay() ? "\u2265" + fmtA(pk) : "\u2014")
+                        : fmtA(iv);
+                sb.append(nm[k]).append(' ').append(s);
+                sb.append(k == 1 ? "\n" : "    ");
+
+                String mult = c.isDefinite() ? "\u2265Is"
+                        : (finite(iv) && pk > 0
+                        ? String.format(Locale.US, "%.1f", iv / pk) + "\u00d7Is" : "\u2014");
+                vb.append(nm[k]).append(' ').append(mult).append(k == 3 ? "" : "  ");
+            }
 
             plot.setMarkerTime(t);
-            String sd = cD.isDefinite() ? "\u2265" + fmtA(downPanel.pickup()) : fmtA(id);
-            String su = cU.isDefinite() ? "\u2265" + fmtA(upPanel.pickup()) : fmtA(iu);
-            resultTv.setText("t = " + fmtT(t) + "\nDown " + sd + "     Up " + su);
-
-            String md = cD.isDefinite() ? "\u2265Is"
-                    : (id > 0 && downPanel.pickup() > 0
-                    ? String.format(Locale.US, "%.1f", id / downPanel.pickup()) + "\u00d7Is" : "\u2014");
-            String mu = cU.isDefinite() ? "\u2265Is"
-                    : (iu > 0 && upPanel.pickup() > 0
-                    ? String.format(Locale.US, "%.1f", iu / upPanel.pickup()) + "\u00d7Is" : "\u2014");
-            verdict("At this time: down " + md + "  \u00b7  up " + mu, MUTED);
+            resultTv.setText(sb.toString());
+            verdict(vb.toString(), MUTED);
         }
+    }
+
+    private static boolean finite(double v) {
+        return !Double.isNaN(v) && !Double.isInfinite(v);
     }
 
     private void idle() {
@@ -722,35 +805,49 @@ public class MainActivity extends Activity {
 
     private void syncPlot() {
         if (plot == null || downPanel == null) return;
-        plot.setRelays(downPanel.curve(), downPanel.pickup(), downPanel.tms(), downPanel.delay(),
-                upPanel.curve(), upPanel.pickup(), upPanel.tms(), upPanel.delay());
+        StagePanel[] st = {downPanel.low, downPanel.high, upPanel.low, upPanel.high};
+        int[] colors = {ACCENT, 0xFF7FE8F8, ORANGE, 0xFFFFD27A};
+        CurvePlotView.Stage[] stages = new CurvePlotView.Stage[4];
+        for (int k = 0; k < 4; k++) {
+            stages[k] = new CurvePlotView.Stage(st[k].curve(), st[k].pickup(), st[k].tms(),
+                    st[k].delay(), colors[k], k == 1 || k == 3);
+        }
+        plot.setStages(stages);
     }
 
     // ------------------------------------------------------------- persistence
 
     private void persist() {
         SharedPreferences.Editor e = prefs.edit();
-        e.putInt("d_curve", downPanel.spinner.getSelectedItemPosition());
-        e.putString("d_pickup", downPanel.pickupEt.getText().toString());
-        e.putString("d_tms", downPanel.tmsEt.getText().toString());
-        e.putString("d_delay", downPanel.delayEt.getText().toString());
-        e.putInt("u_curve", upPanel.spinner.getSelectedItemPosition());
-        e.putString("u_pickup", upPanel.pickupEt.getText().toString());
-        e.putString("u_tms", upPanel.tmsEt.getText().toString());
-        e.putString("u_delay", upPanel.delayEt.getText().toString());
+        writeStage(e, "d", downPanel.low);
+        writeStage(e, "d2", downPanel.high);
+        writeStage(e, "u", upPanel.low);
+        writeStage(e, "u2", upPanel.high);
         e.apply();
     }
 
-    private void load() {
-        downPanel.spinner.setSelection(prefs.getInt("d_curve", 0));
-        downPanel.pickupEt.setText(prefs.getString("d_pickup", "100"));
-        downPanel.tmsEt.setText(prefs.getString("d_tms", "0.10"));
-        downPanel.delayEt.setText(prefs.getString("d_delay", "0.00"));
+    private void writeStage(SharedPreferences.Editor e, String k, StagePanel p) {
+        e.putInt(k + "_curve", p.spinner.getSelectedItemPosition());
+        e.putString(k + "_pickup", p.pickupEt.getText().toString());
+        e.putString(k + "_tms", p.tmsEt.getText().toString());
+        e.putString(k + "_delay", p.delayEt.getText().toString());
+    }
 
-        upPanel.spinner.setSelection(prefs.getInt("u_curve", 0));
-        upPanel.pickupEt.setText(prefs.getString("u_pickup", "100"));
-        upPanel.tmsEt.setText(prefs.getString("u_tms", "0.30"));
-        upPanel.delayEt.setText(prefs.getString("u_delay", "0.30"));
+    private void readStage(String k, StagePanel p, int curve, String pickup,
+                           String tms, String delay) {
+        int idx = prefs.getInt(k + "_curve", curve);
+        p.spinner.setSelection(Math.max(0, Math.min(Curve.ALL.length - 1, idx)));
+        p.pickupEt.setText(prefs.getString(k + "_pickup", pickup));
+        p.tmsEt.setText(prefs.getString(k + "_tms", tms));
+        p.delayEt.setText(prefs.getString(k + "_delay", delay));
+    }
+
+    private void load() {
+        // Stage 1 reuses the original keys so existing settings are kept.
+        readStage("d", downPanel.low, 0, "100", "0.10", "0.00");
+        readStage("d2", downPanel.high, 7, "500", "1.00", "0.10");
+        readStage("u", upPanel.low, 0, "100", "0.30", "0.30");
+        readStage("u2", upPanel.high, 7, "500", "1.00", "0.40");
 
         loaded = true;
         downPanel.refresh();
