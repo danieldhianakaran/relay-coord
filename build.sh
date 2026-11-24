@@ -5,7 +5,7 @@ JDK=${JDK:-/tmp/opencode/android/jdk}
 export PATH="$JDK/bin:$PATH"
 JAVA=${JAVA:-$JDK/bin/java}
 BT=${BT:-/tmp/opencode/android/bt34/android-14}
-AJ=${AJ:-/tmp/opencode/android/android-11/android.jar}
+AJ=${AJ:-/tmp/opencode/android/plat/android-11/android.jar}
 R8=${R8:-/tmp/opencode/android/r8.jar}
 ROOT=$(cd "$(dirname "$0")" && pwd)
 cd "$ROOT"

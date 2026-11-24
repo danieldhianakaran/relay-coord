@@ -40,6 +40,7 @@ public class CurvePlotView extends View {
 
     private final RectF plot = new RectF();
     private final float d;
+    private boolean large = false;
 
     private Curve dc, uc;
     private double dp = 100, dt = 0.1, dd = 0;
@@ -83,6 +84,15 @@ public class CurvePlotView extends View {
         onPick = l;
     }
 
+    /** Larger text and wider lines for the fullscreen view. */
+    public void setLarge(boolean v) {
+        large = v;
+        pText.setTextSize(sp(large ? 11 : 9));
+        pLabel.setTextSize(sp(large ? 10.5f : 8.5f));
+        pCurve.setStrokeWidth(d * (large ? 2.8f : 2.2f));
+        invalidate();
+    }
+
     public void setRelays(Curve downCurve, double downPickup, double downTms, double downDelay,
                           Curve upCurve, double upPickup, double upTms, double upDelay) {
         dc = downCurve;
@@ -116,11 +126,17 @@ public class CurvePlotView extends View {
     @Override
     protected void onSizeChanged(int w, int h, int ow, int oh) {
         super.onSizeChanged(w, h, ow, oh);
-        plot.set(d * 38f, d * 8f, w - d * 8f, h - d * 27f);
+        updatePlotRect(w, h);
+    }
+
+    private void updatePlotRect(int w, int h) {
+        plot.set(d * (large ? 46 : 38), d * (large ? 12 : 8),
+                w - d * (large ? 12 : 8), h - d * (large ? 36 : 27));
     }
 
     @Override
     protected void onDraw(Canvas c) {
+        updatePlotRect(getWidth(), getHeight());
         computeRange();
         c.drawRoundRect(plot, d * 4, d * 4, pFill);
         drawGrid(c);
@@ -291,15 +307,15 @@ public class CurvePlotView extends View {
     private void drawAxes(Canvas c) {
         pText.setColor(C_TEXT);
         pText.setTextAlign(Paint.Align.CENTER);
-        pText.setTextSize(sp(8.5f));
+        pText.setTextSize(sp(large ? 10 : 8.5f));
         c.drawText("Current (A)", plot.centerX(), getHeight() - d * 3.5f, pText);
 
         c.save();
-        c.rotate(-90, d * 9.5f, plot.centerY());
-        c.drawText("Time (s)", d * 9.5f, plot.centerY() + d * 3f, pText);
+        c.rotate(-90, d * (large ? 12 : 9.5f), plot.centerY());
+        c.drawText("Time (s)", d * (large ? 12 : 9.5f), plot.centerY() + d * 3f, pText);
         c.restore();
 
-        pText.setTextSize(sp(9));
+        pText.setTextSize(sp(large ? 11 : 9));
     }
 
     private String tick(double v) {

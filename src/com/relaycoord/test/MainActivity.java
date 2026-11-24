@@ -52,6 +52,12 @@ public class MainActivity extends Activity {
     private final TextView[] tabs = new TextView[3];
     private final View[] pages = new View[3];
 
+    private View headerView, tabBar, solverCard;
+    private TextView hintTv;
+    private LinearLayout chartCard;
+    private TextView expandBtn;
+    private boolean fullscreen = false;
+
     private EditText curEt, timeEt;
     private TextView resultTv, verdictTv;
     private boolean fromCurrent = true;
@@ -74,7 +80,8 @@ public class MainActivity extends Activity {
         root.setBackgroundColor(BG);
         root.setFocusableInTouchMode(true);
 
-        root.addView(buildHeader());
+        headerView = buildHeader();
+        root.addView(headerView);
 
         content = new FrameLayout(this);
         root.addView(content, new LinearLayout.LayoutParams(
@@ -89,7 +96,8 @@ public class MainActivity extends Activity {
         for (View p : pages) content.addView(p, new FrameLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
-        root.addView(buildTabs());
+        tabBar = buildTabs();
+        root.addView(tabBar);
 
         setContentView(root);
         root.requestFocus();
@@ -164,7 +172,7 @@ public class MainActivity extends Activity {
         bar.setPadding(dp(6), dp(5), dp(6), dp(5));
         bar.setBackgroundColor(0xFF0A1219);
 
-        String[] labels = {"1  DOWNSTREAM", "2  UPSTREAM", "3  CURVES"};
+        String[] labels = {"DOWNSTREAM", "UPSTREAM", "CURVES"};
         for (int i = 0; i < 3; i++) {
             final int idx = i;
             TextView tab = new TextView(this);
@@ -204,6 +212,34 @@ public class MainActivity extends Activity {
             boolean on = i == idx;
             tabs[i].setTextColor(on ? ACCENT : MUTED);
             tabs[i].setBackground(on ? rounded(TAB_ON, 8, 0xFF2A4A5F) : null);
+        }
+    }
+
+    private void setFullscreen(boolean on) {
+        if (on) showTab(2);
+        fullscreen = on;
+        headerView.setVisibility(on ? View.GONE : View.VISIBLE);
+        tabBar.setVisibility(on ? View.GONE : View.VISIBLE);
+        solverCard.setVisibility(on ? View.GONE : View.VISIBLE);
+        hintTv.setVisibility(on ? View.GONE : View.VISIBLE);
+
+        expandBtn.setText(on ? "BACK" : "FULL VIEW");
+        expandBtn.setTextColor(on ? ORANGE : ACCENT);
+        if (on) {
+            chartCard.setPadding(dp(4), dp(4), dp(4), dp(4));
+        } else {
+            chartCard.setPadding(dp(8), dp(7), dp(8), dp(6));
+        }
+
+        if (plot != null) plot.setLarge(on);
+    }
+
+    @Override
+    public void onBackPressed() {
+        if (fullscreen) {
+            setFullscreen(false);
+        } else {
+            super.onBackPressed();
         }
     }
 
@@ -412,7 +448,7 @@ public class MainActivity extends Activity {
         page.setOrientation(LinearLayout.VERTICAL);
         page.setPadding(dp(10), dp(8), dp(10), dp(10));
 
-        LinearLayout chartCard = card();
+        chartCard = card();
         chartCard.setPadding(dp(8), dp(7), dp(8), dp(6));
 
         LinearLayout legend = new LinearLayout(this);
@@ -420,13 +456,22 @@ public class MainActivity extends Activity {
         legend.setGravity(Gravity.CENTER_VERTICAL);
         legend.addView(legendItem("Downstream", ACCENT));
         legend.addView(legendItem("Upstream", ORANGE));
-        TextView scale = new TextView(this);
-        scale.setText("log / log");
-        scale.setTextColor(0xFF607A91);
-        scale.setTextSize(8.5f);
-        scale.setGravity(Gravity.END);
-        legend.addView(scale, new LinearLayout.LayoutParams(0,
-                ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+        expandBtn = new TextView(this);
+        expandBtn.setText("FULL VIEW");
+        expandBtn.setTextColor(ACCENT);
+        expandBtn.setTextSize(9);
+        expandBtn.setTypeface(Typeface.DEFAULT_BOLD);
+        expandBtn.setGravity(Gravity.CENTER);
+        expandBtn.setPadding(dp(6), dp(2), dp(6), dp(2));
+        expandBtn.setBackground(rounded(0xFF122533, 5, 0xFF2A4A5F));
+        expandBtn.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                setFullscreen(!fullscreen);
+            }
+        });
+        legend.addView(expandBtn, new LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
         chartCard.addView(legend, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(16)));
 
@@ -440,17 +485,18 @@ public class MainActivity extends Activity {
         chartCard.addView(plot, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
-        TextView hint = new TextView(this);
-        hint.setText("tap plot \u2192 pick current");
-        hint.setTextColor(0xFF5C748A);
-        hint.setTextSize(8);
-        hint.setGravity(Gravity.CENTER);
-        chartCard.addView(hint);
+        hintTv = new TextView(this);
+        hintTv.setText("tap plot \u2192 pick current");
+        hintTv.setTextColor(0xFF5C748A);
+        hintTv.setTextSize(8);
+        hintTv.setGravity(Gravity.CENTER);
+        chartCard.addView(hintTv);
 
         page.addView(chartCard, new LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f));
 
         LinearLayout sc = card();
+        solverCard = sc;
         sc.setPadding(dp(10), dp(9), dp(10), dp(10));
 
         curEt = solverRow(sc, "Current", "A");
